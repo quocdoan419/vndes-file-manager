@@ -1,0 +1,196 @@
+{
+  "name": "vndes-file-manager",
+  "displayName": "FTP & SSH Manager",
+  "description": "Manage multiple FTP and SFTP (SSH) connections securely and perform file operations from VS Code",
+  "version": "0.1.0",
+  "publisher": "vndes.net",
+    "icon": "resources/logo.png",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+		"Programming Languages",
+		"Keymaps"
+	],
+	"keywords": [
+		"SQL",
+		"MySQL",
+		"Database",
+		"Postgresql",
+		"Redis"
+	],
+  "activationEvents": [
+   "onCommand:ftpSsh.addConnection",
+   "onCommand:ftpSsh.editConnection",
+    "onCommand:ftpSsh.removeConnection",
+    "onCommand:ftpSsh.uploadFile",
+    "onCommand:ftpSsh.downloadFile",
+    "onCommand:ftpSsh.rename",
+    "onCommand:ftpSsh.delete",
+     "onCommand:ftpSsh.duplicateFile",
+    "onCommand:ftpSsh.chmod",
+    "onCommand:ftpSsh.move",
+    "onCommand:ftpSsh.openFile"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ftpSshContainer",
+          "title": "FTP/SFTP",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ftpSshContainer": [
+        {
+          "id": "ftpSshView",
+          "name": "SERVICE"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ftpSsh.addConnection",
+        "title": "Add",
+        "icon": "$(plus)"
+      },
+      {
+        "command": "ftpSsh.editConnection",
+        "title": "Edit",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "ftpSsh.removeConnection",
+        "title": "Remove",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "ftpSsh.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ftpSsh.downloadFile",
+        "title": "FTP/SFTP: Download File"
+      },
+      {
+        "command": "ftpSsh.uploadFile",
+        "title": "Uploads File"
+      },
+      {
+        "command": "ftpSsh.addFile",
+        "title": "Add File"
+      },
+      {
+        "command": "ftpSsh.addFolder",
+        "title": "Add Folder"
+      },
+      {
+        "command": "ftpSsh.rename",
+        "title": "Rename"
+      },
+      {
+        "command": "ftpSsh.delete",
+        "title": "Delete"
+      },
+      {
+        "command": "ftpSsh.duplicateFile",
+        "title": "Duplicate"
+      },
+      {
+        "command": "ftpSsh.paste",
+        "title": "FTP/SFTP: Paste"
+      },
+      {
+        "command": "ftpSsh.chmod",
+        "title": "Permissions"
+      },
+      {
+        "command": "ftpSsh.openRemote",
+        "title": "FTP/SFTP: Open Remote File"
+      },
+      { "command": "ftpSsh.openFile",
+       "title": "Open File" }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "ftpSsh.refresh",
+          "when": "view == ftpSshView",
+          "group": "navigation",
+          "icon": "$(refresh)"
+        },
+        {
+          "command": "ftpSsh.addConnection",
+          "when": "view == ftpSshView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+       {
+		"command": "ftpSsh.removeConnection",
+		"when": "view == ftpSshView && viewItem == connection",
+		"group": "inline"
+		},
+        {
+		"command": "ftpSsh.editConnection",
+		"when": "view == ftpSshView && viewItem == connection",
+		"group": "inline"
+		},
+        {
+          "command": "ftpSsh.addFile",
+          "when": "view == ftpSshView && viewItem == folder"
+        },
+        {
+          "command": "ftpSsh.addFolder",
+          "when": "view == ftpSshView && viewItem == folder"
+        },
+        {
+          "command": "ftpSsh.rename",
+          "when": "view == ftpSshView && (viewItem == folder || viewItem == file)"
+        },
+        {
+          "command": "ftpSsh.delete",
+          "when": "view == ftpSshView && (viewItem == folder || viewItem == file)"
+        },
+        {
+          "command": "ftpSsh.uploadFile",
+          "when": "view == ftpSshView && viewItem == folder"
+        },     
+        {
+          "command": "ftpSsh.copyFile",
+          "when": "view == ftpSshView && viewItem == file"
+        },
+        {
+          "command": "ftpSsh.chmod",
+          "when": "view == ftpSshView && viewItem =~ /file|folder/"
+        },
+        { "command": "ftpSsh.openFile",
+        "when": "view == ftpSshView && viewItem == file" 
+        }
+
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^14.0.0",
+    "@types/ssh2-sftp-client": "^9.0.5",
+    "@types/vscode": "^1.60.0",
+    "typescript": "^4.0.0",
+    "vscode-test": "^1.4.0"
+  },
+  "dependencies": {
+    "basic-ftp": "^4.6.2",
+    "ssh2-sftp-client": "^8.0.0",
+    "uuid": "^9.0.0"
+  }
+}

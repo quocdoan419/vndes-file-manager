@@ -2,12 +2,16 @@
   "name": "vndes-file-manager",
   "displayName": "FTP & SSH Manager",
   "description": "Manage multiple FTP and SFTP (SSH) connections securely and perform file operations from VS Code",
-  "version": "0.1.0",
-  "publisher": "vndes.net",
+  "version": "0.2.0",
+  "publisher": "vndesnet",
     "icon": "resources/logo.png",
   "engines": {
     "vscode": "^1.60.0"
   },
+  "repository": {
+		"type": "git",
+		"url": "https://github.com/quocdoan419/vndes-file-manager.git"
+	},
   "categories": [
 		"Programming Languages",
 		"Keymaps"
@@ -30,9 +34,16 @@
      "onCommand:ftpSsh.duplicateFile",
     "onCommand:ftpSsh.chmod",
     "onCommand:ftpSsh.move",
-    "onCommand:ftpSsh.openFile"
+    "onCommand:ftpSsh.openFile",
+    "onCommand:ftpSsh.setSortMode"
   ],
   "main": "./out/extension.js",
+  "viewsWelcome": [
+  {
+    "view": "ftpSshView",
+    "contents": "Right-click the root to sort files by name, type, or modified date."
+  }
+],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -74,7 +85,7 @@
       },
       {
         "command": "ftpSsh.downloadFile",
-        "title": "FTP/SFTP: Download File"
+        "title": "Download File"
       },
       {
         "command": "ftpSsh.uploadFile",
@@ -113,7 +124,13 @@
         "title": "FTP/SFTP: Open Remote File"
       },
       { "command": "ftpSsh.openFile",
-       "title": "Open File" }
+       "title": "Open File" 
+        },
+        {
+        "command": "ftpSsh.setSortMode",
+        "title": "Sort",
+        "icon": "$(beaker)"
+      }
     ],
     "menus": {
       "view/title": [
@@ -127,18 +144,27 @@
           "command": "ftpSsh.addConnection",
           "when": "view == ftpSshView",
           "group": "navigation"
-        }
+        },{
+        "command": "ftpSsh.setSortMode",
+        "when": "view == ftpSshView",
+        "group": "navigation"
+      }
       ],
       "view/item/context": [
        {
 		"command": "ftpSsh.removeConnection",
 		"when": "view == ftpSshView && viewItem == connection",
-		"group": "inline"
+		"group": "inline@2"
 		},
         {
 		"command": "ftpSsh.editConnection",
 		"when": "view == ftpSshView && viewItem == connection",
-		"group": "inline"
+		"group": "inline@0"
+		},
+        {
+		"command": "ftpSsh.refresh",
+		"when": "view == ftpSshView && viewItem == connection",
+		"group": "inline@1"
 		},
         {
           "command": "ftpSsh.addFile",
@@ -169,6 +195,9 @@
           "when": "view == ftpSshView && viewItem =~ /file|folder/"
         },
         { "command": "ftpSsh.openFile",
+        "when": "view == ftpSshView && viewItem == file" 
+        },
+         { "command": "ftpSsh.downloadFile",
         "when": "view == ftpSshView && viewItem == file" 
         }
 

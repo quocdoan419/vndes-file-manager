@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { Readable } from "stream";
 import * as path from "path";
-import { ConnectionTreeProvider, ConnectionTreeItem } from "./treeView";
+import { ConnectionTreeProvider, ConnectionTreeItem, SortMode } from "./treeView";
 import { ConnectionManager, ConnectionConfig } from "./connectionManager";
 import { registerFileEditingCommands } from "./fileEditing";
 
@@ -425,6 +425,45 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   )
 );
+//sort 
+context.subscriptions.push(
+  vscode.commands.registerCommand("ftpSsh.setSortMode", async () => {
+    const mode = await vscode.window.showQuickPick(
+      [
+        { label: "Name", value: "name" },
+        { label: "Type (folder/file)", value: "type" },
+        { label: "Modified Date", value: "modified" },
+      ],
+      { placeHolder: "Select sort mode" }
+    );
+
+    if (!mode) return;
+    treeProvider.setSortMode(mode.value as SortMode);
+  })
+);
+// download file 
+context.subscriptions.push(
+  vscode.commands.registerCommand("ftpSsh.downloadFile", async (item: ConnectionTreeItem) => {
+    if (!item.connection || !item.fullPath) return;
+
+    try {
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(item.label),
+        saveLabel: "Download",
+      });
+      if (!uri) return; // user cancel
+
+      const client = await manager.ensureConnected(item.connection);
+
+      // Download
+      await client.downloadTo(uri.fsPath, item.fullPath);
+      vscode.window.showInformationMessage(`File downloaded to: ${uri.fsPath}`);
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Download failed: ${err.message}`);
+    }
+  })
+);
+
 
 
   // Register file editing commands (if any)
@@ -436,9 +475,6 @@ export function deactivate() {
   // optional: iterate manager connections and close them if needed
 }
 
-/**
- * Mở form Webview để thêm/sửa connection
- */
 function openConnectionForm(
   context: vscode.ExtensionContext,
   existing: ConnectionConfig | null
@@ -450,7 +486,7 @@ function openConnectionForm(
     { enableScripts: true }
   );
 
-  panel.webview.html = getWebviewContent(existing);
+  panel.webview.html = getWebviewContent(context,existing,panel);
 
   panel.webview.onDidReceiveMessage(async (message) => {
   if (message.command === "saveConnection") {
@@ -476,7 +512,10 @@ function openConnectionForm(
 /**
  * Tạo nội dung HTML cho Webview form
  */
-function getWebviewContent(existing: ConnectionConfig | null): string {
+function getWebviewContent(
+    context: vscode.ExtensionContext,
+    existing: ConnectionConfig | null, 
+    panel: vscode.WebviewPanel): string {
   const id = existing?.id ?? "";
   const type = existing?.type ?? "ftp";
   const host = existing?.host ?? "127.0.0.1";
@@ -484,53 +523,93 @@ function getWebviewContent(existing: ConnectionConfig | null): string {
   const username = existing?.username ?? "";
   const password = existing?.password ?? "";
   const root = existing?.root ?? "";
-
+ const styleUri = panel.webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, "resources", "style.css")
+  );
   return /* html */ `
     <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
-        body { font-family: sans-serif; padding: 10px; color: #ddd; background: #1e1e1e; }
-        label { display:block; margin-top:8px; }
-        input, select { width: 100%; padding:5px; background:#2d2d2d; color:#fff; border:1px solid #555; }
-        button { margin-top: 12px; padding: 6px 12px; background:#0e639c; color:white; border:none; cursor:pointer; }
-        button:hover { background:#1177bb; }
-      </style>
-    </head>
-    <body>
-      <h2>${existing ? "Edit" : "Add"} Connection</h2>
-      <label>ID* <input id="id" value="${id}" ${existing ? "readonly" : ""}/></label>
-      <label>Type*
-        <select id="type">
-          <option value="ftp" ${type === "ftp" ? "selected" : ""}>FTP</option>
-          <option value="sftp" ${type === "sftp" ? "selected" : ""}>SFTP</option>
-        </select>
-      </label>
-      <label>Host* <input id="host" value="${host}"/></label>
-      <label>Port* <input id="port" type="number" value="${port}"/></label>
-      <label>Username* <input id="username" value="${username}"/></label>
-      <label>Password* <input id="password" type="password" value="${password}"/></label>
-      <label>Root Path <input id="root" value="${root}"/></label>
-      <button onclick="save()">Save</button>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${existing ? "Edit" : "Add"} Connection</title>
+    <link rel="stylesheet" href="${styleUri}">
+  </head>
+  <body>
+  <h2>${existing ? "Edit" : "Add"} Connection</h2>
 
-      <script>
-        const vscode = acquireVsCodeApi();
-        function save() {
-          const data = {
-            id: document.getElementById("id").value,
-            type: document.getElementById("type").value,
-            host: document.getElementById("host").value,
-            port: parseInt(document.getElementById("port").value, 10),
-            username: document.getElementById("username").value,
-            password: document.getElementById("password").value,
-            root: document.getElementById("root").value,
-          };
-          vscode.postMessage({ command: "saveConnection", data });
-        }
-      </script>
-    </body>
-    </html>
+  <div class="form-group">
+    <label for="id">Name / ID *</label>
+    <input id="id" value="${id}" placeholder="Unique connection ID" ${existing ? "readonly" : ""} title="ConnID">
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label for="type">Type *</label>
+      <select id="type" title="Type">
+        <option value="ftp" ${type === "ftp" ? "selected" : ""}>FTP</option>
+        <option value="sftp" ${type === "sftp" ? "selected" : ""}>SFTP</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="port">Port *</label>
+      <input id="port" type="number" value="${port}" placeholder="21 for FTP, 22 for SFTP" title="Port">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label for="host">Host *</label>
+    <input id="host" value="${host}" placeholder="ftp.example.com" title="Domain or IP address">
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label for="username">Username *</label>
+      <input id="username" value="${username}" placeholder="User login" title="Username">
+    </div>
+    <div class="form-group">
+      <label for="password">Password *</label>
+      <input id="password" type="password" value="${password}" placeholder="••••••" title="Password">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label for="root">Root Path</label>
+    <input id="root" value="${root}" placeholder="/path" title="/path">
+  </div>
+
+  <div class="button-row">
+    <button class="cancel-btn" onclick="cancel()">Cancel</button>
+    <button class="save-btn" onclick="save()">Save</button>
+  </div>
+
+  <script>
+    const vscode = acquireVsCodeApi();
+
+    function save() {
+      const data = {
+        id: document.getElementById("id").value.trim(),
+        type: document.getElementById("type").value,
+        host: document.getElementById("host").value.trim(),
+        port: parseInt(document.getElementById("port").value, 10),
+        username: document.getElementById("username").value.trim(),
+        password: document.getElementById("password").value,
+        root: document.getElementById("root").value.trim(),
+      };
+
+      if (!data.id || !data.host || !data.username || !data.password) {
+        alert("Please fill all required fields (*)");
+        return;
+      }
+
+      vscode.postMessage({ command: "saveConnection", data });
+    }
+
+    function cancel() {
+      vscode.postMessage({ command: "cancelConnection" });
+    }
+  </script>
+</body>
+  </html>
   `;
 }

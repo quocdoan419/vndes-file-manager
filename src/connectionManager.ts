@@ -26,37 +26,17 @@ export class ConnectionManager {
   }
 
   async addConnection(config: ConnectionConfig): Promise<void> {
-    if (config.type === "sftp") {
-      const client = new SftpClient();
-      await client.connect({
-        host: config.host,
-        port: config.port,
-        username: config.username,
-        password: config.password,
-        privateKey: config.privateKey,
-      });
-      this.connections.set(config.id, client);
-    } else {
-      const client = new FtpClient(); // ✅ dùng đúng class
-      await client.access({
-        host: config.host,
-        port: config.port,
-        user: config.username,
-        password: config.password,
-      });
-      this.connections.set(config.id, client);
-    }
-
+     // Store config
     const ids: string[] = this.context.globalState.get("connectionIds", []) || [];
     if (!ids.includes(config.id)) {
       ids.push(config.id);
       await this.context.globalState.update("connectionIds", ids);
     }
-
     await this.context.secrets.store(`connection-${config.id}`, JSON.stringify(config));
+
+    await this.ensureConnected(config);
   }
 async updateConnection(config: ConnectionConfig): Promise<void> {
-  // 1️⃣ Nếu client cũ tồn tại, đóng kết nối
   const oldClient = this.connections.get(config.id);
   if (oldClient) {
     try {
@@ -67,7 +47,6 @@ async updateConnection(config: ConnectionConfig): Promise<void> {
     }
   }
 
-  // 2️⃣ Tạo client mới với cấu hình mới
   if (config.type === "sftp") {
     const client = new SftpClient();
     await client.connect({
@@ -89,7 +68,6 @@ async updateConnection(config: ConnectionConfig): Promise<void> {
     this.connections.set(config.id, client);
   }
 
-  // 3️⃣ Không cần thêm mới id nữa, chỉ cập nhật secret
   await this.context.secrets.store(`connection-${config.id}`, JSON.stringify(config));
 }
 
@@ -183,13 +161,58 @@ async updateConnection(config: ConnectionConfig): Promise<void> {
   async move(id: string, oldPath: string, newPath: string): Promise<void> {
     await this.rename(id, oldPath, newPath);
   }
-  async ensureConnected(config: ConnectionConfig): Promise<any> {
+async ensureConnected(config: ConnectionConfig) {
   let client = this.connections.get(config.id);
-  if (!client) {
-    await this.addConnection(config);
-    client = this.connections.get(config.id);
+  
+  if (client) {
+    try {
+      // Kiểm tra kết nối còn sống
+      if (config.type === "sftp") {
+        await client.cwd(); // nếu lỗi là disconnect
+      } else {
+        await client.send("NOOP"); // FTP keep-alive
+      }
+      return client;
+    } catch (err) {
+      // Client đã đóng, tạo lại
+      await this.disconnect(config.id);
+      client = undefined;
+    }
   }
-  return client;
+
+  // Tạo lại client mới
+  if (config.type === "sftp") {
+    const newClient = new SftpClient();
+    await newClient.connect({
+      host: config.host,
+      port: config.port,
+      username: config.username,
+      password: config.password,
+      privateKey: config.privateKey,
+    });
+    this.connections.set(config.id, newClient);
+    return newClient;
+  } else {
+    const newClient = new FtpClient();
+    await newClient.access({
+      host: config.host,
+      port: config.port,
+      user: config.username,
+      password: config.password,
+    });
+    this.connections.set(config.id, newClient);
+    return newClient;
+  }
+}
+
+async disconnect(id: string) {
+  const client = this.connections.get(id);
+  if (!client) return;
+  try {
+    if (client instanceof SftpClient) await client.end();
+    else await client.close();
+  } catch {}
+  this.connections.delete(id);
 }
 
 async listDirectory(config: ConnectionConfig, remotePath: string): Promise<any[]> {

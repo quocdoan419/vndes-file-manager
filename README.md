@@ -153,3 +153,8 @@ MIT License
 * Works on **Windows, macOS, and Linux** with VS Code 1.70+.
 
 ---
+## Donate
+
+* PayPal : info.vndes@gmail.com.
+
+---

@@ -54,6 +54,7 @@ npm run compile
 ## Usage
 
 ### Adding a Connection
+<img width="1086" height="804" alt="image" src="https://github.com/user-attachments/assets/d13edf3a-045a-4714-a081-7f28c2809401" />
 
 1. Open the **FTP/SFTP** view in the Activity Bar.
 2. Click **Add Connection**.
@@ -77,6 +78,7 @@ npm run compile
 1. Right-click a connection.
 2. Click the **Remove** icon (trash).
 3. Confirm **Yes** or **No**.
+<img width="311" height="584" alt="image" src="https://github.com/user-attachments/assets/6acd918f-64ef-4412-ad5c-e4a00d7ae5fc" />
 
 ### Upload Files
 

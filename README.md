@@ -2,6 +2,7 @@
 
 A Visual Studio Code extension for managing remote files over **FTP** or **SFTP**.
 It allows you to **browse remote servers**, **upload/download files**, **copy, rename, delete**, and **change file permissions** directly from VS Code.
+<img width="1057" height="764" alt="image" src="https://github.com/user-attachments/assets/dbcf7d99-d325-4aa4-a697-57c834539b8d" />
 
 ---
 

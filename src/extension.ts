@@ -3,7 +3,8 @@ import { Readable } from "stream";
 import * as path from "path";
 import { ConnectionTreeProvider, ConnectionTreeItem, SortMode } from "./treeView";
 import { ConnectionManager, ConnectionConfig } from "./connectionManager";
-import { registerFileEditingCommands } from "./fileEditing";
+import { uploadFolderRecursive,registerFileEditingCommands,getFileInfoHtml } from "./fileUtils";
+import { downloadFolderPro } from "./download";
 
 let manager: ConnectionManager;
 let treeProvider: ConnectionTreeProvider;
@@ -202,7 +203,6 @@ export function registerContextCommands(
           const ext = path.extname(fileUri.fsPath);
           const baseName = path.basename(fileUri.fsPath, ext);
 
-          // Tìm tên mới nếu trùng
           let newName = path.basename(fileUri.fsPath);
           let counter = 1;
           while (existingNames.includes(newName)) {
@@ -224,6 +224,56 @@ export function registerContextCommands(
     }
   )
 );
+// upload folder
+context.subscriptions.push(
+  vscode.commands.registerCommand("ftpSsh.uploadFolder", async (item: ConnectionTreeItem) => {
+    if (!item?.connection) {
+      vscode.window.showErrorMessage("No connection selected");
+      return;
+    }
+
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: "Select folder to upload",
+    });
+    if (!uris || uris.length === 0) return;
+
+    const localFolder = uris[0].fsPath;
+    const remoteFolder = item.fullPath || "/";
+
+    try {
+      const client = await manager.ensureConnected(item.connection); 
+      await uploadFolderRecursive(localFolder, remoteFolder, client);
+      vscode.window.showInformationMessage(`Folder uploaded to ${remoteFolder}`);
+      treeProvider.refresh();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Upload failed: ${err.message}`);
+    }
+  })
+);
+
+// download 
+context.subscriptions.push(
+  vscode.commands.registerCommand("ftpSsh.downloadFolder", async (item: ConnectionTreeItem) => {
+    if (!item.connection || !item.fullPath) return;
+
+    const client = await manager.ensureConnected(item.connection);
+    const isSftp = item.connection.type === "sftp";
+
+    const uri = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      openLabel: "Save folder here",
+    });
+    if (!uri || uri.length === 0) return;
+
+    const localFolder = path.join(uri[0].fsPath, path.basename(item.fullPath));
+    await downloadFolderPro(client, item.fullPath, localFolder, isSftp);
+  })
+);
+
+
 context.subscriptions.push(
   vscode.commands.registerCommand(
     "ftpSsh.chmod",
@@ -235,12 +285,10 @@ context.subscriptions.push(
 
       const client = await manager.ensureConnected(item.connection);
 
-      // Hiển thị input box để người dùng nhập số chmod
       const input = await vscode.window.showInputBox({
         prompt: `Enter permissions for ${item.label} (e.g., 644, 755)`,
         placeHolder: "644",
         validateInput: (value) => {
-          // Kiểm tra định dạng số 3 chữ số, mỗi chữ số 0-7
           if (!/^[0-7]{3}$/.test(value)) {
             return "Enter a valid 3-digit octal number (0-7)";
           }
@@ -265,6 +313,100 @@ context.subscriptions.push(
       }
     }
   )
+);
+context.subscriptions.push(
+  vscode.commands.registerCommand('ftpSsh.openSshTerminal', async (item: ConnectionTreeItem) => {
+    if (!item.connection || item.connection.type !== 'sftp') {
+      vscode.window.showErrorMessage('This command works only for SFTP/SSH connections.');
+      return;
+    }
+
+    const conn: ConnectionConfig = item.connection;
+
+    const term = vscode.window.createTerminal({
+      name: `SSH: ${conn.host}`,
+      shellPath: 'ssh', // 
+      shellArgs: [`${conn.username}@${conn.host}`, '-p', `${conn.port}`],
+    });
+
+    term.show();
+  })
+);
+context.subscriptions.push(
+    vscode.commands.registerCommand('ftpSsh.move', async (item: ConnectionTreeItem) => {
+    if (!item.connection || !item.fullPath) return;
+
+    const client = await manager.ensureConnected(item.connection);
+
+    // get list
+    const getDirs = async (path: string) => {
+    const list = await manager.listDirectory(item.connection!, path);
+    return list.filter((f: any) => f.type === 'd' || f.isDirectory).map((f: any) => f.name);
+    };
+
+    const currentPath = item.fullPath.substring(0, item.fullPath.lastIndexOf('/'));
+
+
+    // Popup sugget
+    const targetPath = await vscode.window.showInputBox({
+    prompt: `Enter destination folder for ${item.label}`,
+    value: currentPath,
+    placeHolder: 'Type or select destination folder',
+    validateInput: (value) => value.trim() === '' ? 'Path cannot be empty' : null
+    });
+
+
+    if (!targetPath) return;
+    const name = item.fullPath.split('/').pop();
+    const newPath = `${targetPath.replace(/\/+$/, '')}/${name}`;
+
+
+    try {
+    await client.rename(item.fullPath, newPath);
+    vscode.window.showInformationMessage(`Moved ${item.label} to ${newPath}`);
+    treeProvider.refresh();
+    } catch (err: any) {
+    vscode.window.showErrorMessage(`Error moving file/folder: ${err.message}`);
+    }
+    })
+);
+context.subscriptions.push(
+  vscode.commands.registerCommand("ftpSsh.fileInfo", async (item: ConnectionTreeItem) => {
+    if (!item?.connection || !item.fullPath) {
+      vscode.window.showErrorMessage("No file selected");
+      return;
+    }
+
+    try {
+      const client = await manager.ensureConnected(item.connection);
+      const stat = await client.list(item.fullPath);
+        
+      const panel = vscode.window.createWebviewPanel(
+        "fileInfo",
+        `${item.label} Info`,
+        vscode.ViewColumn.One,
+        { enableScripts: true }
+      );
+
+      panel.webview.html = getFileInfoHtml(item.fullPath, stat);
+
+      // Nhận dữ liệu khi user nhấn Apply
+      panel.webview.onDidReceiveMessage(async (message) => {
+        if (message.command === "setChmod") {
+          try {
+            await client.chmod(item.fullPath, message.mode);
+            vscode.window.showInformationMessage(
+              `Permissions of ${item.label} updated to ${message.mode}`
+            );
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to set chmod: ${err.message}`);
+          }
+        }
+      });
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to get file info: ${err.message}`);
+    }
+  })
 );
 
 function parsePermissions(perms: string): number {
@@ -523,6 +665,7 @@ function getWebviewContent(
   const username = existing?.username ?? "";
   const password = existing?.password ?? "";
   const root = existing?.root ?? "";
+  const passive = existing?.passive ?? true; // default passive mode
  const styleUri = panel.webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, "resources", "style.css")
   );
@@ -536,6 +679,9 @@ function getWebviewContent(
     <link rel="stylesheet" href="${styleUri}">
   </head>
   <body>
+  <div class="flex-center">
+	<div class="card">
+		<div class="card-body">
   <h2>${existing ? "Edit" : "Add"} Connection</h2>
 
   <div class="form-group">
@@ -546,7 +692,7 @@ function getWebviewContent(
   <div class="form-row">
     <div class="form-group">
       <label for="type">Type *</label>
-      <select id="type" title="Type">
+      <select id="type" title="Type" onchange="updatePassiveVisibility()">
         <option value="ftp" ${type === "ftp" ? "selected" : ""}>FTP</option>
         <option value="sftp" ${type === "sftp" ? "selected" : ""}>SFTP</option>
       </select>
@@ -577,12 +723,15 @@ function getWebviewContent(
     <label for="root">Root Path</label>
     <input id="root" value="${root}" placeholder="/path" title="/path">
   </div>
+  <div class="form-group" id="UsePassiveMode">
+    ${type === 'ftp' ? `<label><input type='checkbox' id='passive' ${passive ? 'checked' : ''} /> Use Passive Mode</label>` : ''}
+  </div>
 
   <div class="button-row">
     <button class="cancel-btn" onclick="cancel()">Cancel</button>
     <button class="save-btn" onclick="save()">Save</button>
   </div>
-
+  </div></div></div>
   <script>
     const vscode = acquireVsCodeApi();
 
@@ -595,6 +744,7 @@ function getWebviewContent(
         username: document.getElementById("username").value.trim(),
         password: document.getElementById("password").value,
         root: document.getElementById("root").value.trim(),
+        passive: document.getElementById("passive")?.checked || false
       };
 
       if (!data.id || !data.host || !data.username || !data.password) {
@@ -608,6 +758,10 @@ function getWebviewContent(
     function cancel() {
       vscode.postMessage({ command: "cancelConnection" });
     }
+      function updatePassiveVisibility() {
+          const type = document.getElementById('type').value;
+          document.getElementById('passiveLabel').style.display = (type === 'ftp') ? 'block' : 'none';
+        }
   </script>
 </body>
   </html>

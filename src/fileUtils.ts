@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
 import { ConnectionManager } from "./connectionManager";
 
 export function registerFileEditingCommands(context: vscode.ExtensionContext, manager: ConnectionManager) {
@@ -90,4 +92,79 @@ export function registerFileEditingCommands(context: vscode.ExtensionContext, ma
       }
     })
   );
+}
+export async function uploadFolderRecursive(localPath: string, remotePath: string, client: any) {
+  const entries = fs.readdirSync(localPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const localFilePath = path.join(localPath, entry.name);
+    const remoteFilePath = `${remotePath}/${entry.name}`;
+
+    if (entry.isDirectory()) {
+      // 🔹 Tạo folder nếu chưa có
+      if (client.mkdir) {
+        await client.mkdir(remoteFilePath, true).catch(() => {});
+      }
+      // 🔹 Đệ quy
+      await uploadFolderRecursive(localFilePath, remoteFilePath, client);
+    } else {
+      // 🔹 Upload file
+      const content = fs.createReadStream(localFilePath);
+      if (client.put) {
+        await client.put(content, remoteFilePath);
+      } else if (client.upload) {
+        await client.upload(content, remoteFilePath);
+      }
+    }
+  }
+}
+async function askPermissions(): Promise<{read: boolean; write: boolean; execute: boolean;}> {
+  const picks = await vscode.window.showQuickPick(
+    [
+      { label: "Read", picked: true },
+      { label: "Write", picked: false },
+      { label: "Execute", picked: false },
+    ],
+    {
+      canPickMany: true,
+      title: "Chọn phân quyền cho kết nối",
+    }
+  );
+
+  return {
+    read: picks?.some(p => p.label === "Read") ?? false,
+    write: picks?.some(p => p.label === "Write") ?? false,
+    execute: picks?.some(p => p.label === "Execute") ?? false,
+  };
+}
+
+export function getFileInfoHtml(filePath: string, stat: any): string {
+
+  const size = stat.size || 0;
+  const modified = stat.modifyTime ? new Date(stat.modifyTime).toLocaleString() : "N/A";
+  const rights = stat.rights || {};
+  const octal = stat.mode ? stat.mode.toString(8).slice(-3) : "644";
+
+  return /*html*/`
+    <html>
+      <body style="font-family: sans-serif; padding: 10px;">
+        <h3>${filePath}</h3>
+        <p><b>Size:</b> ${size} bytes</p>
+        <p><b>Modified:</b> ${modified}</p>
+        <p><b>Permissions:</b> ${rights.user || "-"}${rights.group || "-"}${rights.other || "-"}</p>
+        <p>
+          <label>Octal:</label>
+          <input id="chmodInput" value="${octal}" style="width:60px;" />
+        </p>
+        <button onclick="apply()">Apply</button>
+        <script>
+          const vscode = acquireVsCodeApi();
+          function apply() {
+            const mode = document.getElementById('chmodInput').value;
+            vscode.postMessage({ command: 'setChmod', mode });
+          }
+        </script>
+      </body>
+    </html>
+  `;
 }

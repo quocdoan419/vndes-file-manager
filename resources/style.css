@@ -1,83 +1,96 @@
-/* media/style.css */
-body {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  margin: 0;
-  padding: 20px;
-  color: #eee;
-  background-color: #1e1e1e;
-}
-
-h2 {
-  margin-bottom: 20px;
-  color: #0e639c;
-}
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: 600;
-}
-
-input, select {
-  width: 100%;
-  padding: 8px 10px;
-  font-size: 14px;
-  background-color: #2d2d2d;
-  color: #fff;
-  border: 1px solid #555;
-  border-radius: 4px;
-  box-sizing: border-box;
-}
-
-input:focus, select:focus {
-  border-color: #0e639c;
-  outline: none;
-  box-shadow: 0 0 5px #0e639c66;
-}
-
-.form-row {
-  display: flex;
-  gap: 10px;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-.button-row {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-button {
-  padding: 8px 16px;
-  font-size: 14px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-button.save-btn {
-  background-color: #0e639c;
-  color: white;
-}
-
-button.save-btn:hover {
-  background-color: #1177bb;
-}
-
-button.cancel-btn {
-  background-color: #444;
-  color: #ccc;
-}
-
-button.cancel-btn:hover {
-  background-color: #555;
-}
+	body {
+	  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+	  margin: 0;
+	  padding: 20px;
+	  color: #eee;
+	  background-color: #1e1e1e;
+	}
+	
+	h2 {
+	  margin-bottom: 20px;
+	  color: #0e639c;
+	}
+	
+	.form-group {
+	  margin-bottom: 15px;
+	}
+	.flex-center {
+		width: 100%;
+		justify-content: center;
+		display: grid;
+		align-items: center;
+	}
+	.card {
+		background: #2b2b2b;
+		border-radius: 6px;
+	}
+	.card-body {
+		padding: 10px;
+	}
+	label {
+	  display: block;
+	  margin-bottom: 5px;
+	  font-weight: 600;
+	}
+	
+	input, select {
+	  width: 100%;
+	  padding: 8px 10px;
+	  font-size: 14px;
+	  background-color: #2d2d2d;
+	  color: #fff;
+	  border: 1px solid #555;
+	  border-radius: 4px;
+	  box-sizing: border-box;
+	}
+	input[type=checkbox] {
+		width: auto !important;
+	}
+	input:focus, select:focus {
+	  border-color: #0e639c;
+	  outline: none;
+	  box-shadow: 0 0 5px #0e639c66;
+	}
+	
+	.form-row {
+	  display: flex;
+	  gap: 10px;
+	}
+	
+	.form-row .form-group {
+	  flex: 1;
+	}
+	
+	.button-row {
+	  margin-top: 20px;
+	  display: flex;
+	  justify-content: flex-end;
+	  gap: 10px;
+	}
+	
+	button {
+	  padding: 8px 16px;
+	  font-size: 14px;
+	  border: none;
+	  border-radius: 4px;
+	  cursor: pointer;
+	  font-weight: 600;
+	}
+	
+	button.save-btn {
+	  background-color: #0e639c;
+	  color: white;
+	}
+	
+	button.save-btn:hover {
+	  background-color: #1177bb;
+	}
+	
+	button.cancel-btn {
+	  background-color: #444;
+	  color: #ccc;
+	}
+	
+	button.cancel-btn:hover {
+	  background-color: #555;
+	}

@@ -13,6 +13,12 @@ export interface ConnectionConfig {
   password?: string;
   privateKey?: string;
   root?: string;
+  passive?: boolean; 
+  permissions?: {
+    read: boolean;
+    write: boolean;
+    execute: boolean;
+  };
 }
 
 export type Connection = ConnectionConfig;
@@ -64,6 +70,7 @@ async updateConnection(config: ConnectionConfig): Promise<void> {
       port: config.port,
       user: config.username,
       password: config.password,
+      
     });
     this.connections.set(config.id, client);
   }
@@ -166,9 +173,8 @@ async ensureConnected(config: ConnectionConfig) {
   
   if (client) {
     try {
-      // Kiểm tra kết nối còn sống
       if (config.type === "sftp") {
-        await client.cwd(); // nếu lỗi là disconnect
+        await client.cwd(); 
       } else {
         await client.send("NOOP"); // FTP keep-alive
       }
@@ -180,7 +186,6 @@ async ensureConnected(config: ConnectionConfig) {
     }
   }
 
-  // Tạo lại client mới
   if (config.type === "sftp") {
     const newClient = new SftpClient();
     await newClient.connect({
@@ -198,7 +203,7 @@ async ensureConnected(config: ConnectionConfig) {
       host: config.host,
       port: config.port,
       user: config.username,
-      password: config.password,
+      password: config.password
     });
     this.connections.set(config.id, newClient);
     return newClient;

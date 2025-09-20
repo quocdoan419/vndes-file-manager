@@ -15,8 +15,16 @@ export class ConnectionTreeItem extends vscode.TreeItem {
   ) {
     super(uri, collapsibleState);
     if (contextValue === "connection") {
-      this.iconPath = new vscode.ThemeIcon(connection?.type === "sftp" ? "server-network" : "server");
+      //this.iconPath = new vscode.ThemeIcon(connection?.type === "sftp" ? "server-network" : "server");
+       this.iconPath = new vscode.ThemeIcon("server");
+      if (connection?.type === "sftp") {
+        this.contextValue = "sftpConnection";
+      } else {
+       
+        this.contextValue = "connection";
+      }
     }
+     
     if (contextValue === "file") {
       this.command = {
         command: "ftpSsh.openFile",
@@ -51,7 +59,6 @@ export class ConnectionTreeProvider implements vscode.TreeDataProvider<Connectio
 
   async getChildren(element?: ConnectionTreeItem): Promise<ConnectionTreeItem[]> {
     if (!element) {
-      // Root: danh sách kết nối
       const connections = await this.manager.listConnections();
       connections.sort((a, b) => a.id.localeCompare(b.id));
       return connections.map((conn) => {
@@ -78,7 +85,7 @@ export class ConnectionTreeProvider implements vscode.TreeDataProvider<Connectio
         return [];
       }
 
-      // Sort theo chế độ
+      // Sort file
       list.sort((a, b) => {
         const aIsDir = a.type === "d" || a.isDirectory === true;
         const bIsDir = b.type === "d" || b.isDirectory === true;

@@ -2,7 +2,7 @@
   "name": "vndes-file-manager",
   "displayName": "FTP & SSH Manager",
   "description": "Manage multiple FTP and SFTP (SSH) connections securely and perform file operations from VS Code",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "vndesnet",
     "icon": "resources/logo.png",
   "engines": {
@@ -17,25 +17,29 @@
 		"Keymaps"
 	],
 	"keywords": [
-		"SQL",
-		"MySQL",
-		"Database",
-		"Postgresql",
+		"FTP",
+		"SFTP",
+		"File manager",
+		"File",
 		"Redis"
 	],
   "activationEvents": [
    "onCommand:ftpSsh.addConnection",
    "onCommand:ftpSsh.editConnection",
     "onCommand:ftpSsh.removeConnection",
+    "onCommand:ftpSsh.fileInfo",
     "onCommand:ftpSsh.uploadFile",
     "onCommand:ftpSsh.downloadFile",
+    "onCommand:ftpSsh.uploadFolder",
     "onCommand:ftpSsh.rename",
     "onCommand:ftpSsh.delete",
      "onCommand:ftpSsh.duplicateFile",
     "onCommand:ftpSsh.chmod",
     "onCommand:ftpSsh.move",
     "onCommand:ftpSsh.openFile",
-    "onCommand:ftpSsh.setSortMode"
+    "onCommand:ftpSsh.setSortMode",
+    "onCommand:ftpSsh.compressFolder",
+    "onCommand:ftpSsh.openSshTerminal"
   ],
   "main": "./out/extension.js",
   "viewsWelcome": [
@@ -82,14 +86,20 @@
         "command": "ftpSsh.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },{
+        "command": "ftpSsh.fileInfo",
+        "title": "View Info"
       },
       {
         "command": "ftpSsh.downloadFile",
         "title": "Download File"
+      },{
+        "command": "ftpSsh.uploadFolder",
+        "title": "Upload Folder"
       },
       {
         "command": "ftpSsh.uploadFile",
-        "title": "Uploads File"
+        "title": "Upload Files"
       },
       {
         "command": "ftpSsh.addFile",
@@ -98,6 +108,10 @@
       {
         "command": "ftpSsh.addFolder",
         "title": "Add Folder"
+      },
+      {
+        "command": "ftpSsh.move",
+        "title": "Move to..."
       },
       {
         "command": "ftpSsh.rename",
@@ -130,6 +144,13 @@
         "command": "ftpSsh.setSortMode",
         "title": "Sort",
         "icon": "$(beaker)"
+      },{
+        "command": "ftpSsh.downloadFolder",
+        "title": "Download Folder"
+      },{
+        "command": "ftpSsh.openSshTerminal",
+        "title": "Open Terminal",
+        "icon" :"$(repl)"
       }
     ],
     "menus": {
@@ -153,17 +174,21 @@
       "view/item/context": [
        {
 		"command": "ftpSsh.removeConnection",
-		"when": "view == ftpSshView && viewItem == connection",
+		"when": "view == ftpSshView && (viewItem == connection || viewItem == sftpConnection)",
 		"group": "inline@2"
 		},
         {
 		"command": "ftpSsh.editConnection",
-		"when": "view == ftpSshView && viewItem == connection",
+		"when": "view == ftpSshView &&  (viewItem == connection || viewItem == sftpConnection)",
 		"group": "inline@0"
 		},
         {
 		"command": "ftpSsh.refresh",
-		"when": "view == ftpSshView && viewItem == connection",
+		"when": "view == ftpSshView &&  (viewItem == connection || viewItem == sftpConnection)",
+		"group": "inline@1"
+		},{
+		"command": "ftpSsh.openSshTerminal",
+		"when": "view == ftpSshView && viewItem == sftpConnection",
 		"group": "inline@1"
 		},
         {
@@ -185,7 +210,11 @@
         {
           "command": "ftpSsh.uploadFile",
           "when": "view == ftpSshView && viewItem == folder"
-        },     
+        },
+         {
+          "command": "ftpSsh.uploadFolder",
+          "when": "view == ftpSshView && viewItem == folder"
+        },  
         {
           "command": "ftpSsh.copyFile",
           "when": "view == ftpSshView && viewItem == file"
@@ -193,12 +222,18 @@
         {
           "command": "ftpSsh.chmod",
           "when": "view == ftpSshView && viewItem =~ /file|folder/"
-        },
-        { "command": "ftpSsh.openFile",
-        "when": "view == ftpSshView && viewItem == file" 
-        },
-         { "command": "ftpSsh.downloadFile",
-        "when": "view == ftpSshView && viewItem == file" 
+        }, { 
+            "command": "ftpSsh.openFile",
+             "when": "view == ftpSshView && viewItem == file" 
+        },{
+            "command": "ftpSsh.downloadFile",
+             "when": "view == ftpSshView && viewItem == file" 
+        },{
+            "command": "ftpSsh.downloadFolder",
+            "when": "view == ftpSshView && viewItem == folder"
+        },{
+            "command": "ftpSsh.move",
+            "when": "view == ftpSshView && (viewItem == folder || viewItem == file)"
         }
 
       ]

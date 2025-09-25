@@ -156,7 +156,7 @@ MIT License
 
 ---
 ## Donate
-
+* Or want to support a cup of coffee, you can donate:
 * PayPal : info.vndes@gmail.com.
 
 ---

@@ -2,6 +2,44 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { ConnectionManager } from "./connectionManager";
+export async function searchFilesFTP(client: any, dir: string, keyword: string): Promise<string[]> {
+  let results: string[] = [];
+  try {
+    const list = await client.list(dir);
+    for (const item of list) {
+      const fullPath = path.posix.join(dir, item.name);
+      if (item.isDirectory) {
+        const subResults = await searchFilesFTP(client, fullPath, keyword);
+        results = results.concat(subResults);
+      } else if (item.name.toLowerCase().includes(keyword.toLowerCase())) {
+        //const relativePath = path.posix.relative(dir, fullPath);
+        results.push(fullPath);
+      }
+    }
+  } catch (err) {
+    console.error(`Error reading ${dir}:`, err);
+  }
+  return results;
+}
+
+export async function searchFilesSFTP(client: any, dir: string, keyword: string): Promise<string[]> {
+  let results: string[] = [];
+  try {
+    const list = await client.list(dir);
+    for (const item of list) {
+      const fullPath = path.posix.join(dir, item.name);
+      if (item.type === "d") {
+        const subResults = await searchFilesSFTP(client, fullPath, keyword);
+        results = results.concat(subResults);
+      } else if (item.name.toLowerCase().includes(keyword.toLowerCase())) {
+        results.push(fullPath);
+      }
+    }
+  } catch (err) {
+    console.error(`Error reading ${dir}:`, err);
+  }
+  return results;
+}
 
 export function registerFileEditingCommands(context: vscode.ExtensionContext, manager: ConnectionManager) {
   context.subscriptions.push(
@@ -168,3 +206,4 @@ export function getFileInfoHtml(filePath: string, stat: any): string {
     </html>
   `;
 }
+

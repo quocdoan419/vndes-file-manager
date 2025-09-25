@@ -2,7 +2,7 @@
   "name": "vndes-file-manager",
   "displayName": "FTP & SSH Manager",
   "description": "Manage multiple FTP and SFTP (SSH) connections securely and perform file operations from VS Code",
-  "version": "0.2.1",
+  "version": "0.3.5",
   "publisher": "vndesnet",
     "icon": "resources/logo.png",
   "engines": {
@@ -39,7 +39,8 @@
     "onCommand:ftpSsh.openFile",
     "onCommand:ftpSsh.setSortMode",
     "onCommand:ftpSsh.compressFolder",
-    "onCommand:ftpSsh.openSshTerminal"
+    "onCommand:ftpSsh.openSshTerminal",
+    "onCommand:ftpSsh.searchFiles"
   ],
   "main": "./out/extension.js",
   "viewsWelcome": [
@@ -151,7 +152,12 @@
         "command": "ftpSsh.openSshTerminal",
         "title": "Open Terminal",
         "icon" :"$(repl)"
-      }
+      },
+        {
+        "command": "ftpSsh.searchFiles",
+        "title": "Search Files...",
+         "icon": "$(search)"
+        }
     ],
     "menus": {
       "view/title": [
@@ -234,6 +240,10 @@
         },{
             "command": "ftpSsh.move",
             "when": "view == ftpSshView && (viewItem == folder || viewItem == file)"
+        },{
+            "command": "ftpSsh.searchFiles",
+            "when": "view == ftpSshView && viewItem == folder",
+            "group": "inline@2"
         }
 
       ]

@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
 import { Readable } from "stream";
 import * as path from "path";
+import * as fs from "fs";
 import { ConnectionTreeProvider, ConnectionTreeItem, SortMode } from "./treeView";
 import { ConnectionManager, ConnectionConfig } from "./connectionManager";
-import { uploadFolderRecursive,registerFileEditingCommands,getFileInfoHtml } from "./fileUtils";
+import { uploadFolderRecursive,registerFileEditingCommands,getFileInfoHtml,searchFilesFTP, searchFilesSFTP } from "./fileUtils";
 import { downloadFolderPro } from "./download";
+
 
 let manager: ConnectionManager;
 let treeProvider: ConnectionTreeProvider;
-
 // Map localPath -> { connection, remotePath, client }
 const openFiles = new Map<
   string,
@@ -39,7 +40,14 @@ export function registerContextCommands(
 
         try {
           // create an empty buffer and upload as stream
-          await client.uploadFrom(Readable.from(""), remotePath);
+           if (item.connection.type === "sftp") {
+                await client.put(Buffer.from(""), remotePath);
+
+             }
+            else {
+                await client.uploadFrom(Readable.from(""), remotePath);
+            }
+          
           vscode.window.showInformationMessage(`File created: ${remotePath}`);
           treeProvider.refresh();
         } catch (err: any) {
@@ -48,6 +56,66 @@ export function registerContextCommands(
       }
     )
   );
+  // search file
+  context.subscriptions.push(
+  vscode.commands.registerCommand("ftpSsh.searchFiles", async (item: ConnectionTreeItem) => {
+    if (!item || !item.fullPath || !item.connection) {
+      vscode.window.showErrorMessage("Invalid folder");
+      return;
+    }
+
+    const keyword = await vscode.window.showInputBox({
+      prompt: `Enter keyword to search in ${item.fullPath}`,
+      placeHolder: "e.g. index, config, .env",
+    });
+    if (!keyword) return;
+
+    try {
+      const results = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Searching "${keyword}" in ${item.fullPath}`,
+          cancellable: false,
+        },
+        async (progress) => {
+            progress.report({ message: "Scanning folders..." });
+
+            if (!item.connection) {
+                vscode.window.showErrorMessage("No connection found for this item.");
+                return [];
+            }
+
+            const client = await manager.ensureConnected(item.connection);
+            if(!item.fullPath)
+                    {
+                        return;
+                    }
+            if (item.connection.type === "sftp") {
+                return await searchFilesSFTP(client, item.fullPath, keyword);
+            } else {
+                return await searchFilesFTP(client, item.fullPath, keyword);
+            }
+        }
+
+      );
+
+      if (!results || results.length === 0) {
+        vscode.window.showInformationMessage(`No files found for "${keyword}"`);
+        return;
+      }
+
+      const pick = await vscode.window.showQuickPick(results, {
+        placeHolder: "Select file to open",
+      });
+
+      if (pick) {
+        vscode.commands.executeCommand("ftpSsh.openFile", { fullPath: pick, connection: item.connection });
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(`Search failed: ${err}`);
+    }
+  })
+);
 
   // 📌 Add Folder
   context.subscriptions.push(
@@ -65,9 +133,15 @@ export function registerContextCommands(
         const client = await manager.ensureConnected(item.connection);
 
         try {
-          await client.ensureDir(remotePath);
+             if (item.connection.type === "sftp") {
+                await client.mkdir(remotePath, true);
+             }
+             else {
+         await client.ensureDir(remotePath);
           // some FTP servers need to cd back; ensureDir usually changes cwd, but it's fine
-          await client.cd("/"); // optional: reset cwd
+          await client.cd("/"); // optional: reset cwd  
+             }
+         
           vscode.window.showInformationMessage(`Folder created: ${remotePath}`);
           treeProvider.refresh();
         } catch (err: any) {
@@ -118,12 +192,25 @@ export function registerContextCommands(
       const client = await manager.ensureConnected(item.connection);
 
       try {
-        if (item.contextValue === "folder") {
-          // basic-ftp: removeDir removes directory only if empty; use removeDir for recursive if supported
-          await client.removeDir(item.fullPath);
-        } else {
-          await client.remove(item.fullPath);
+         if (item.connection.type === "sftp") {
+              if (item.contextValue === "folder") {
+                // basic-ftp: removeDir removes directory only if empty; use removeDir for recursive if supported
+                await client.rmdir(item.fullPath,true);
+                } else {
+                await client.delete(item.fullPath);
+                }
+
+             }
+        else {
+            if (item.contextValue === "folder") {
+                // basic-ftp: removeDir removes directory only if empty; use removeDir for recursive if supported
+                await client.removeDir(item.fullPath);
+                } else {
+                await client.remove(item.fullPath);
+                }
         }
+
+
         vscode.window.showInformationMessage(`Deleted: ${item.fullPath}`);
         treeProvider.refresh();
       } catch (err: any) {
@@ -197,26 +284,54 @@ export function registerContextCommands(
 
       try {
         const list = await manager.listDirectory(item.connection, folderPath);
-        const existingNames = list.map((f: any) => f.name);
+                    const existingNames = list.map((f: any) => f.name);
+         if (item.connection.type === "sftp") {
+                const tasks = uris.map(async (fileUri) => {
+                        const ext = path.extname(fileUri.fsPath);
+                        const baseName = path.basename(fileUri.fsPath, ext);
 
-        for (const fileUri of uris) {
-          const ext = path.extname(fileUri.fsPath);
-          const baseName = path.basename(fileUri.fsPath, ext);
+                        let newName = path.basename(fileUri.fsPath);
+                        let counter = 1;
 
-          let newName = path.basename(fileUri.fsPath);
-          let counter = 1;
-          while (existingNames.includes(newName)) {
-            newName = `${baseName}-copy${counter > 1 ? `-${counter}` : ""}${ext}`;
-            counter++;
-          }
-          existingNames.push(newName); 
+                        while (existingNames.includes(newName)) {
+                        newName = `${baseName}-copy${counter > 1 ? `-${counter}` : ""}${ext}`;
+                        counter++;
+                        }
 
-          const remotePath = `${folderPath.endsWith('/') ? folderPath : folderPath + '/'}${newName}`;
+                        existingNames.push(newName);
 
-          await client.uploadFrom(fileUri.fsPath, remotePath);
-        }
+                        const remotePath = `${folderPath.replace(/\/$/, "")}/${newName}`;
 
-        vscode.window.showInformationMessage(`Uploaded ${uris.length} file(s) successfully.`);
+                        await client.put(fileUri.fsPath, remotePath); // ssh2-sftp-client
+                        return newName;
+                    });
+                      const uploaded = await Promise.all(tasks);
+                        vscode.window.showInformationMessage(`✅ Uploaded: ${uploaded.join(", ")}`);
+
+         }
+         else {
+            
+                    for (const fileUri of uris) {
+                    const ext = path.extname(fileUri.fsPath);
+                    const baseName = path.basename(fileUri.fsPath, ext);
+
+                    let newName = path.basename(fileUri.fsPath);
+                    let counter = 1;
+                    while (existingNames.includes(newName)) {
+                        newName = `${baseName}-copy${counter > 1 ? `-${counter}` : ""}${ext}`;
+                        counter++;
+                    }
+                    existingNames.push(newName); 
+
+                    const remotePath = `${folderPath.endsWith('/') ? folderPath : folderPath + '/'}${newName}`;
+
+                    await client.uploadFrom(fileUri.fsPath, remotePath);
+                    }
+                     vscode.window.showInformationMessage(`Uploaded ${uris.length} file(s) successfully.`);
+         }
+     
+
+       
         treeProvider.refresh();
       } catch (err: any) {
         vscode.window.showErrorMessage(`Upload failed: ${err.message}`);
@@ -226,33 +341,185 @@ export function registerContextCommands(
 );
 // upload folder
 context.subscriptions.push(
-  vscode.commands.registerCommand("ftpSsh.uploadFolder", async (item: ConnectionTreeItem) => {
-    if (!item?.connection) {
-      vscode.window.showErrorMessage("No connection selected");
-      return;
+  vscode.commands.registerCommand(
+    "ftpSsh.uploadFolder",
+    async (item: ConnectionTreeItem, uris?: vscode.Uri[]) => {
+      if (!item.connection || !item.fullPath) return;
+
+      // chọn folder nếu chưa có
+      if (!uris || uris.length === 0) {
+        uris = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          openLabel: "Select folder to upload",
+        });
+        if (!uris) return;
+      }
+
+      const client = await manager.ensureConnected(item.connection);
+
+      // helper: ensure dir (FTP vs SFTP)
+      async function ensureDir(remoteDir: string) {
+        if (typeof client.ensureDir === "function") {
+          // basic-ftp
+          await client.ensureDir(remoteDir);
+        } else if (typeof client.mkdir === "function") {
+          // ssh2-sftp-client
+          try {
+            await client.mkdir(remoteDir, true);
+          } catch (err: any) {
+            // nếu lỗi vì đã tồn tại thì ignore
+            const msg = String(err?.message ?? err);
+            if (!/exist/i.test(msg) && !/file exists/i.test(msg)) {
+              throw err;
+            }
+          }
+        }
+      }
+
+      // helper: đếm file để progress
+      function countFiles(dir: string): number {
+        let count = 0;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            count += countFiles(full);
+          } else {
+            count++;
+          }
+        }
+        return count;
+      }
+
+      for (const folderUri of uris) {
+        const localFolder = folderUri.fsPath;
+        const folderName = path.basename(localFolder);
+        const remoteFolder = path.posix.join(item.fullPath, folderName);
+
+        const totalFiles = Math.max(1, countFiles(localFolder));
+        let uploadedFiles = 0;
+
+        // conflictAction tồn tại CHO MỖI LẦN upload folder này
+        let conflictAction: "overwriteAll" | "skipAll" | null = null;
+
+        // hàm kiểm tra tồn tại và hỏi (dùng client.list(parentDir))
+        async function handleConflict(remotePath: string, entryName: string): Promise<string | null> {
+          // parent directory (posix)
+          const parent = path.posix.dirname(remotePath) || "/"; 
+          const name = path.posix.basename(remotePath);
+
+          // try to list parent
+          let list: any[] = [];
+          try {
+            // client.list works for both basic-ftp and ssh2-sftp-client
+            list = await client.list(parent);
+          } catch (err) {
+            // nếu list lỗi (parent không tồn tại) => coi như không tồn tại
+            return remotePath;
+          }
+
+          const exists = list.some((f: any) => f.name === name);
+          if (!exists) return remotePath;
+
+          // nếu đã chọn all trước đó trong lần upload này
+          if (conflictAction === "overwriteAll") return remotePath;
+          if (conflictAction === "skipAll") return null;
+
+          // hỏi user (modal để bắt buộc chọn)
+          const choice = await vscode.window.showWarningMessage(
+            `⚠️ "${entryName}" already exists on server at ${parent}.`,
+            { modal: true },
+            "Overwrite",
+            "Skip",
+            "Overwrite All",
+            "Skip All"
+          );
+
+          if (choice === "Overwrite") return remotePath;
+          if (choice === "Skip") return null;
+          if (choice === "Overwrite All") {
+            conflictAction = "overwriteAll";
+            return remotePath;
+          }
+          if (choice === "Skip All") {
+            conflictAction = "skipAll";
+            return null;
+          }
+
+          return null;
+        }
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Uploading ${folderName}...`,
+            cancellable: false,
+          },
+          async (progress) => {
+            // đệ quy upload
+            async function uploadRecursive(localDir: string, remoteDir: string) {
+              const entries = fs.readdirSync(localDir, { withFileTypes: true });
+              for (const entry of entries) {
+                const localPath = path.join(localDir, entry.name);
+                // chuẩn hoá remote path
+                let remotePath = path.posix.join(remoteDir, entry.name);
+
+                if (entry.isDirectory()) {
+                  // kiểm tra conflict cho thư mục
+                  const resolved = await handleConflict(remotePath, entry.name);
+                  if (!resolved) {
+                    // user chọn skip
+                    continue;
+                  }
+                  // tạo folder trên server
+                  await ensureDir(resolved);
+                  // đệ quy
+                  await uploadRecursive(localPath, resolved);
+                } else {
+                  // file: hỏi nếu tồn tại
+                  const resolved = await handleConflict(remotePath, entry.name);
+                  if (!resolved) {
+                    // skip
+                    continue;
+                  }
+
+                  // upload: tùy client
+                  if (typeof client.uploadFrom === "function") {
+                    // basic-ftp
+                    await client.uploadFrom(localPath, resolved);
+                  } else if (typeof client.put === "function") {
+                    // ssh2-sftp-client
+                    await client.put(localPath, resolved);
+                  } else {
+                    throw new Error("Unsupported client for upload");
+                  }
+
+                  uploadedFiles++;
+                  const percent = Math.round((uploadedFiles / totalFiles) * 100);
+                  progress.report({
+                    increment: (1 / totalFiles) * 100,
+                    message: `${percent}% (${uploadedFiles}/${totalFiles})`,
+                  });
+                }
+              }
+            }
+
+            // tạo thư mục gốc trước
+            await ensureDir(remoteFolder);
+            await uploadRecursive(localFolder, remoteFolder);
+          }
+        );
+
+        // sau khi upload xong cho folder này, conflictAction biến mất (nằm trong hàm)
+        treeProvider.refresh();
+        vscode.window.showInformationMessage(`✅ Uploaded folder: ${remoteFolder}`);
+      }
     }
-
-    const uris = await vscode.window.showOpenDialog({
-      canSelectFiles: false,
-      canSelectFolders: true,
-      canSelectMany: false,
-      openLabel: "Select folder to upload",
-    });
-    if (!uris || uris.length === 0) return;
-
-    const localFolder = uris[0].fsPath;
-    const remoteFolder = item.fullPath || "/";
-
-    try {
-      const client = await manager.ensureConnected(item.connection); 
-      await uploadFolderRecursive(localFolder, remoteFolder, client);
-      vscode.window.showInformationMessage(`Folder uploaded to ${remoteFolder}`);
-      treeProvider.refresh();
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`Upload failed: ${err.message}`);
-    }
-  })
+  )
 );
+
 
 // download 
 context.subscriptions.push(
@@ -434,28 +701,61 @@ function parsePermissions(perms: string): number {
       const client = await manager.ensureConnected(item.connection);
 
       try {
+        if (item.connection.type === "sftp") {
+            await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+            const tmpUri = vscode.Uri.joinPath(context.globalStorageUri, item.label);
+            const localPath = tmpUri.fsPath;
+
+            // Download file from server
+            await client.fastGet(item.fullPath, localPath);
+
+            // open file
+            const doc = await vscode.workspace.openTextDocument(tmpUri);
+            await vscode.window.showTextDocument(doc);
+
+            // Upload save
+            const saveListener = vscode.workspace.onDidSaveTextDocument(async (savedDoc) => {
+                if (savedDoc.uri.fsPath === localPath) {
+                try {
+                    await client.fastPut(localPath, item.fullPath);
+                    vscode.window.showInformationMessage(`✅ Saved to server: ${item.fullPath}`);
+                } catch (err: any) {
+                    vscode.window.showErrorMessage(`❌ Error saving: ${err.message}`);
+                }
+                }
+            });
+
+            context.subscriptions.push(saveListener);
+
+        }
+        else {
         // Ensure storage directory exists
-        await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+                await vscode.workspace.fs.createDirectory(context.globalStorageUri);
 
-        // Create deterministic temp filename: "<connId>__<basename>"
-        const baseName = path.basename(item.fullPath);
-        const safeName = `${item.connection.id}__${baseName}`;
-        const tmpUri = vscode.Uri.joinPath(context.globalStorageUri, safeName);
-        const localPath = tmpUri.fsPath;
+                // Create deterministic temp filename: "<connId>__<basename>"
+                const baseName = path.basename(item.fullPath);
+                const safeName = `${item.connection.id}__${baseName}`;
+                const tmpUri = vscode.Uri.joinPath(context.globalStorageUri, safeName);
+                const localPath = tmpUri.fsPath;
 
-        // Download remote file to localPath
-        await client.downloadTo(localPath, item.fullPath);
+                // Download remote file to localPath
+                await client.downloadTo(localPath, item.fullPath);
 
-        // Open the downloaded file in editor
-        const doc = await vscode.workspace.openTextDocument(tmpUri);
-        await vscode.window.showTextDocument(doc);
+                // Open the downloaded file in editor
+                
+                const doc = await vscode.workspace.openTextDocument(tmpUri);
+                await vscode.window.showTextDocument(doc);
 
-        // Track this open file so onDidSaveTextDocument can upload it back
-        openFiles.set(localPath, {
-          connection: item.connection,
-          remotePath: item.fullPath,
-          client,
-        });
+                // Track this open file so onDidSaveTextDocument can upload it back
+                openFiles.set(localPath, {
+                connection: item.connection,
+                remotePath: item.fullPath,
+                client,
+                });
+                
+        }
+
+        
       } catch (err: any) {
         vscode.window.showErrorMessage(`Error opening file: ${err.message}`);
       }
@@ -596,9 +896,13 @@ context.subscriptions.push(
       if (!uri) return; // user cancel
 
       const client = await manager.ensureConnected(item.connection);
-
-      // Download
-      await client.downloadTo(uri.fsPath, item.fullPath);
+      if (item.connection.type === "sftp") {
+            await client.fastGet(uri.fsPath, item.fullPath);
+      }
+      else {
+        await client.downloadTo(uri.fsPath,item.fullPath );
+      }
+      
       vscode.window.showInformationMessage(`File downloaded to: ${uri.fsPath}`);
     } catch (err: any) {
       vscode.window.showErrorMessage(`Download failed: ${err.message}`);

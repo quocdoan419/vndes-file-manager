@@ -24,7 +24,9 @@ export class ConnectionTreeItem extends vscode.TreeItem {
         this.contextValue = "connection";
       }
     }
-     
+     if (contextValue === "folder") {
+        this.iconPath = new vscode.ThemeIcon("folder");
+    }
     if (contextValue === "file") {
       this.command = {
         command: "ftpSsh.openFile",

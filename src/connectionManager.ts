@@ -228,4 +228,14 @@ async listDirectory(config: ConnectionConfig, remotePath: string): Promise<any[]
     return await client.list(remotePath);
   }
 }
+async getClientFromUri(uri: vscode.Uri): Promise<{ client: any; connection: any }> {
+    const host = uri.authority; // phần sau ftpSsh://
+    const key = `${host}:21`; // default port 21, có thể tùy chỉnh
+
+    let entry = this.connections.get(key);
+    if (!entry) {
+      throw new Error(`No active connection for host ${host}`);
+    }
+    return entry;
+  }
 }
